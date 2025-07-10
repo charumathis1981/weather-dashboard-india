@@ -17,12 +17,15 @@ SATELLITE_URL = "http://tile.openweathermap.org/map"
 
 # Major Indian cities with their coordinates
 INDIAN_CITIES = {
+    # Metro Cities
     "Mumbai": {"lat": 19.0760, "lon": 72.8777},
     "Delhi": {"lat": 28.7041, "lon": 77.1025},
     "Bangalore": {"lat": 12.9716, "lon": 77.5946},
     "Hyderabad": {"lat": 17.3850, "lon": 78.4867},
     "Chennai": {"lat": 13.0827, "lon": 80.2707},
     "Kolkata": {"lat": 22.5726, "lon": 88.3639},
+
+    # Major Cities
     "Pune": {"lat": 18.5204, "lon": 73.8567},
     "Ahmedabad": {"lat": 23.0225, "lon": 72.5714},
     "Jaipur": {"lat": 26.9124, "lon": 75.7873},
@@ -36,7 +39,35 @@ INDIAN_CITIES = {
     "Visakhapatnam": {"lat": 17.6868, "lon": 83.2185},
     "Pimpri-Chinchwad": {"lat": 18.6298, "lon": 73.7997},
     "Patna": {"lat": 25.5941, "lon": 85.1376},
-    "Vadodara": {"lat": 22.3072, "lon": 73.1812}
+    "Vadodara": {"lat": 22.3072, "lon": 73.1812},
+
+    # Additional Popular Cities
+    "Kochi": {"lat": 9.9312, "lon": 76.2673},
+    "Coimbatore": {"lat": 11.0168, "lon": 76.9558},
+    "Madurai": {"lat": 9.9252, "lon": 78.1198},
+    "Thiruvananthapuram": {"lat": 8.5241, "lon": 76.9366},
+    "Mysore": {"lat": 12.2958, "lon": 76.6394},
+    "Mangalore": {"lat": 12.9141, "lon": 74.8560},
+    "Guwahati": {"lat": 26.1445, "lon": 91.7362},
+    "Chandigarh": {"lat": 30.7333, "lon": 76.7794},
+    "Dehradun": {"lat": 30.3165, "lon": 78.0322},
+    "Shimla": {"lat": 31.1048, "lon": 77.1734},
+    "Agra": {"lat": 27.1767, "lon": 78.0081},
+    "Varanasi": {"lat": 25.3176, "lon": 82.9739},
+    "Amritsar": {"lat": 31.6340, "lon": 74.8723},
+    "Jodhpur": {"lat": 26.2389, "lon": 73.0243},
+    "Udaipur": {"lat": 24.5854, "lon": 73.7125},
+    "Ranchi": {"lat": 23.3441, "lon": 85.3096},
+    "Bhubaneswar": {"lat": 20.2961, "lon": 85.8245},
+    "Cuttack": {"lat": 20.4625, "lon": 85.8828},
+    "Raipur": {"lat": 21.2514, "lon": 81.6296},
+    "Jabalpur": {"lat": 23.1815, "lon": 79.9864},
+    "Gwalior": {"lat": 26.2183, "lon": 78.1828},
+    "Aurangabad": {"lat": 19.8762, "lon": 75.3433},
+    "Nashik": {"lat": 19.9975, "lon": 73.7898},
+    "Rajkot": {"lat": 22.3039, "lon": 70.8022},
+    "Jammu": {"lat": 32.7266, "lon": 74.8570},
+    "Srinagar": {"lat": 34.0837, "lon": 74.7973}
 }
 
 @app.route('/')
