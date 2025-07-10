@@ -334,13 +334,29 @@ body {
     cursor: pointer;
     transition: all 0.3s ease;
     font-size: 0.9rem;
+    position: relative;
+    min-width: 80px;
+    text-align: center;
 }
 
-.map-btn.active,
 .map-btn:hover {
+    background: #f7fafc;
+    border-color: #667eea;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+}
+
+.map-btn.active {
     background: #667eea;
     color: white;
     border-color: #667eea;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.map-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
 }
 
 .weather-map {

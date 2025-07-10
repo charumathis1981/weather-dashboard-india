@@ -91,7 +91,8 @@
 {% block scripts %}
 <script>
 let map;
-let currentLayer;
+let baseLayer;
+let currentOverlay;
 let weatherData;
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -137,97 +138,173 @@ function displayWeatherData(data) {
 function initializeMap(data) {
     // Initialize Leaflet map
     map = L.map('map').setView([data.coordinates.lat, data.coordinates.lon], 10);
-    
-    // Add base tile layer
-    const baseLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors'
+
+    // Add base tile layer (OpenStreetMap)
+    baseLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 18
     }).addTo(map);
-    
+
     // Add marker for the city
     L.marker([data.coordinates.lat, data.coordinates.lon])
         .addTo(map)
         .bindPopup(`<b>${data.city}</b><br>${data.description}<br>${Math.round(data.temperature)}°C`)
         .openPopup();
-    
+
     // Set up layer controls
     setupLayerControls(data);
 }
 
 function setupLayerControls(data) {
     const mapButtons = document.querySelectorAll('.map-btn');
-    
+
     mapButtons.forEach(button => {
         button.addEventListener('click', function() {
             // Remove active class from all buttons
-            mapButtons.forEach(btn => btn.classList.remove('active'));
-            // Add active class to clicked button
+            mapButtons.forEach(btn => {
+                btn.classList.remove('active');
+                btn.style.opacity = '1';
+                btn.innerHTML = btn.innerHTML.replace(' <i class="fas fa-spinner fa-spin"></i>', '');
+            });
+
+            // Add active class and loading state to clicked button
             this.classList.add('active');
-            
+            const originalText = this.innerHTML;
+            this.innerHTML = originalText + ' <i class="fas fa-spinner fa-spin"></i>';
+            this.style.opacity = '0.8';
+
             const layerType = this.dataset.layer;
+
+            // Switch layer
             switchMapLayer(layerType, data);
+
+            // Remove loading state after a short delay
+            setTimeout(() => {
+                this.innerHTML = originalText;
+                this.style.opacity = '1';
+            }, 1000);
         });
     });
 }
 
 function switchMapLayer(layerType, data) {
-    // Remove current overlay layer if exists
-    if (currentLayer) {
-        map.removeLayer(currentLayer);
+    console.log('Switching to layer:', layerType);
+
+    // Remove current overlay if exists
+    if (currentOverlay) {
+        map.removeLayer(currentOverlay);
+        currentOverlay = null;
     }
 
-    // Add new layer based on type
+    // Handle base layer changes vs overlay changes
     switch(layerType) {
+        case 'base':
+            // Switch back to OpenStreetMap base layer
+            if (baseLayer && !map.hasLayer(baseLayer)) {
+                // Remove any other base layer first
+                map.eachLayer(function(layer) {
+                    if (layer !== baseLayer && layer._url && layer._url.includes('tile')) {
+                        map.removeLayer(layer);
+                    }
+                });
+                baseLayer.addTo(map);
+            }
+            console.log('Showing OpenStreetMap base layer');
+            break;
+
         case 'satellite':
-            console.log('Loading satellite view');
-            currentLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            // Replace base layer with satellite imagery
+            if (baseLayer && map.hasLayer(baseLayer)) {
+                map.removeLayer(baseLayer);
+            }
+            console.log('Loading satellite imagery');
+            const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                 attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
                 maxZoom: 18
             }).addTo(map);
             break;
+
         case 'clouds':
-            console.log('Loading clouds layer:', data.satellite_layers.clouds);
+            // Ensure we have a base layer, then add clouds overlay
+            ensureBaseLayer();
+            console.log('Loading clouds overlay:', data.satellite_layers.clouds);
             try {
-                currentLayer = L.tileLayer(data.satellite_layers.clouds, {
+                currentOverlay = L.tileLayer(data.satellite_layers.clouds, {
                     attribution: 'Weather data © OpenWeatherMap',
-                    opacity: 0.6,
-                    errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
-                }).addTo(map);
+                    opacity: 0.7,
+                    maxZoom: 18
+                });
+                currentOverlay.addTo(map);
+
+                // Handle tile load errors
+                currentOverlay.on('tileerror', function(e) {
+                    console.warn('Clouds tile failed to load:', e.tile.src);
+                });
+
             } catch (error) {
                 console.error('Failed to load clouds layer:', error);
                 showLayerError('Clouds layer temporarily unavailable');
             }
             break;
+
         case 'precipitation':
-            console.log('Loading precipitation layer:', data.satellite_layers.precipitation);
+            ensureBaseLayer();
+            console.log('Loading precipitation overlay:', data.satellite_layers.precipitation);
             try {
-                currentLayer = L.tileLayer(data.satellite_layers.precipitation, {
+                currentOverlay = L.tileLayer(data.satellite_layers.precipitation, {
                     attribution: 'Weather data © OpenWeatherMap',
-                    opacity: 0.6,
-                    errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
-                }).addTo(map);
+                    opacity: 0.7,
+                    maxZoom: 18
+                });
+                currentOverlay.addTo(map);
+
+                currentOverlay.on('tileerror', function(e) {
+                    console.warn('Precipitation tile failed to load:', e.tile.src);
+                });
+
             } catch (error) {
                 console.error('Failed to load precipitation layer:', error);
                 showLayerError('Precipitation layer temporarily unavailable');
             }
             break;
+
         case 'temperature':
-            console.log('Loading temperature layer:', data.satellite_layers.temperature);
+            ensureBaseLayer();
+            console.log('Loading temperature overlay:', data.satellite_layers.temperature);
             try {
-                currentLayer = L.tileLayer(data.satellite_layers.temperature, {
+                currentOverlay = L.tileLayer(data.satellite_layers.temperature, {
                     attribution: 'Weather data © OpenWeatherMap',
-                    opacity: 0.6,
-                    errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
-                }).addTo(map);
+                    opacity: 0.7,
+                    maxZoom: 18
+                });
+                currentOverlay.addTo(map);
+
+                currentOverlay.on('tileerror', function(e) {
+                    console.warn('Temperature tile failed to load:', e.tile.src);
+                });
+
             } catch (error) {
                 console.error('Failed to load temperature layer:', error);
                 showLayerError('Temperature layer temporarily unavailable');
             }
             break;
-        case 'base':
+
         default:
-            console.log('Showing base map only');
-            // Base map only, no overlay
+            console.log('Unknown layer type:', layerType);
             break;
+    }
+}
+
+function ensureBaseLayer() {
+    // Make sure we have a base layer for overlays
+    if (!map.hasLayer(baseLayer)) {
+        // Remove any satellite layer first
+        map.eachLayer(function(layer) {
+            if (layer._url && (layer._url.includes('arcgisonline') || layer._url.includes('satellite'))) {
+                map.removeLayer(layer);
+            }
+        });
+        baseLayer.addTo(map);
     }
 }
 
@@ -236,21 +313,41 @@ function showLayerError(message) {
     const notification = document.createElement('div');
     notification.style.cssText = `
         position: fixed;
-        top: 20px;
+        top: 80px;
         right: 20px;
-        background: #ff6b6b;
+        background: rgba(255, 107, 107, 0.95);
         color: white;
-        padding: 10px 15px;
-        border-radius: 5px;
+        padding: 12px 18px;
+        border-radius: 8px;
         z-index: 10000;
         font-size: 14px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255,255,255,0.2);
+        max-width: 300px;
     `;
-    notification.textContent = message;
+    notification.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${message}`;
     document.body.appendChild(notification);
 
+    // Fade in
+    notification.style.opacity = '0';
+    notification.style.transform = 'translateX(100%)';
     setTimeout(() => {
-        document.body.removeChild(notification);
-    }, 3000);
+        notification.style.transition = 'all 0.3s ease';
+        notification.style.opacity = '1';
+        notification.style.transform = 'translateX(0)';
+    }, 10);
+
+    // Fade out and remove
+    setTimeout(() => {
+        notification.style.opacity = '0';
+        notification.style.transform = 'translateX(100%)';
+        setTimeout(() => {
+            if (document.body.contains(notification)) {
+                document.body.removeChild(notification);
+            }
+        }, 300);
+    }, 4000);
 }
 
 function showError(message) {
