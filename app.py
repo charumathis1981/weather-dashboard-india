@@ -13,7 +13,7 @@ app = Flask(__name__)
 API_KEY = os.getenv('OPENWEATHER_API_KEY', 'demo_key')
 print(f"API Key loaded: {API_KEY[:10]}..." if API_KEY != 'demo_key' else "Using demo key")
 BASE_URL = "http://api.openweathermap.org/data/2.5/weather"
-SATELLITE_URL = "http://tile.openweathermap.org/map"
+SATELLITE_URL = "https://tile.openweathermap.org/map"
 
 # Major Indian cities with their coordinates
 INDIAN_CITIES = {
@@ -124,9 +124,9 @@ def get_weather_data(city):
                 'sunset': datetime.fromtimestamp(data['sys']['sunset']).strftime('%H:%M'),
                 'coordinates': coords,
                 'satellite_layers': {
-                    'clouds': f"{SATELLITE_URL}/clouds_new/{{z}}/{{x}}/{{y}}.png?appid={API_KEY}",
-                    'precipitation': f"{SATELLITE_URL}/precipitation_new/{{z}}/{{x}}/{{y}}.png?appid={API_KEY}",
-                    'temperature': f"{SATELLITE_URL}/temp_new/{{z}}/{{x}}/{{y}}.png?appid={API_KEY}"
+                    'clouds': SATELLITE_URL + "/clouds_new/{z}/{x}/{y}.png?appid=" + API_KEY,
+                    'precipitation': SATELLITE_URL + "/precipitation_new/{z}/{x}/{y}.png?appid=" + API_KEY,
+                    'temperature': SATELLITE_URL + "/temp_new/{z}/{x}/{y}.png?appid=" + API_KEY
                 }
             }
 

@@ -72,6 +72,7 @@
             <h3><i class="fas fa-satellite"></i> Satellite View</h3>
             <div class="map-controls">
                 <button class="map-btn active" data-layer="base">Base Map</button>
+                <button class="map-btn" data-layer="satellite">Satellite</button>
                 <button class="map-btn" data-layer="clouds">Clouds</button>
                 <button class="map-btn" data-layer="precipitation">Precipitation</button>
                 <button class="map-btn" data-layer="temperature">Temperature</button>
@@ -173,33 +174,83 @@ function switchMapLayer(layerType, data) {
     if (currentLayer) {
         map.removeLayer(currentLayer);
     }
-    
+
     // Add new layer based on type
     switch(layerType) {
-        case 'clouds':
-            // Note: This is a demo URL - you'll need a valid API key
-            currentLayer = L.tileLayer('https://tile.openweathermap.org/map/clouds_new/{z}/{x}/{y}.png?appid=demo', {
-                attribution: 'Weather data © OpenWeatherMap',
-                opacity: 0.6
+        case 'satellite':
+            console.log('Loading satellite view');
+            currentLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+                maxZoom: 18
             }).addTo(map);
+            break;
+        case 'clouds':
+            console.log('Loading clouds layer:', data.satellite_layers.clouds);
+            try {
+                currentLayer = L.tileLayer(data.satellite_layers.clouds, {
+                    attribution: 'Weather data © OpenWeatherMap',
+                    opacity: 0.6,
+                    errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+                }).addTo(map);
+            } catch (error) {
+                console.error('Failed to load clouds layer:', error);
+                showLayerError('Clouds layer temporarily unavailable');
+            }
             break;
         case 'precipitation':
-            currentLayer = L.tileLayer('https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=demo', {
-                attribution: 'Weather data © OpenWeatherMap',
-                opacity: 0.6
-            }).addTo(map);
+            console.log('Loading precipitation layer:', data.satellite_layers.precipitation);
+            try {
+                currentLayer = L.tileLayer(data.satellite_layers.precipitation, {
+                    attribution: 'Weather data © OpenWeatherMap',
+                    opacity: 0.6,
+                    errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+                }).addTo(map);
+            } catch (error) {
+                console.error('Failed to load precipitation layer:', error);
+                showLayerError('Precipitation layer temporarily unavailable');
+            }
             break;
         case 'temperature':
-            currentLayer = L.tileLayer('https://tile.openweathermap.org/map/temp_new/{z}/{x}/{y}.png?appid=demo', {
-                attribution: 'Weather data © OpenWeatherMap',
-                opacity: 0.6
-            }).addTo(map);
+            console.log('Loading temperature layer:', data.satellite_layers.temperature);
+            try {
+                currentLayer = L.tileLayer(data.satellite_layers.temperature, {
+                    attribution: 'Weather data © OpenWeatherMap',
+                    opacity: 0.6,
+                    errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+                }).addTo(map);
+            } catch (error) {
+                console.error('Failed to load temperature layer:', error);
+                showLayerError('Temperature layer temporarily unavailable');
+            }
             break;
         case 'base':
         default:
+            console.log('Showing base map only');
             // Base map only, no overlay
             break;
     }
+}
+
+function showLayerError(message) {
+    // Create a temporary notification
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #ff6b6b;
+        color: white;
+        padding: 10px 15px;
+        border-radius: 5px;
+        z-index: 10000;
+        font-size: 14px;
+    `;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+
+    setTimeout(() => {
+        document.body.removeChild(notification);
+    }, 3000);
 }
 
 function showError(message) {
