@@ -361,8 +361,44 @@ body {
 
 .weather-map {
     height: 400px;
+    width: 100%;
     border-radius: 12px;
     overflow: hidden;
+    position: relative;
+    z-index: 1;
+}
+
+/* Fix for Leaflet map display issues */
+.weather-map .leaflet-container {
+    height: 100% !important;
+    width: 100% !important;
+}
+
+.weather-map .leaflet-tile {
+    max-width: none !important;
+}
+
+.weather-map .leaflet-tile-container {
+    overflow: visible !important;
+}
+
+/* Layer status indicator */
+.layer-status {
+    background: rgba(102, 126, 234, 0.9);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.layer-status i {
+    font-size: 1rem;
 }
 
 /* Error message */

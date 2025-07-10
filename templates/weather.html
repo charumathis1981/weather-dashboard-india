@@ -77,6 +77,10 @@
                 <button class="map-btn" data-layer="precipitation">Precipitation</button>
                 <button class="map-btn" data-layer="temperature">Temperature</button>
             </div>
+            <div id="layerStatus" class="layer-status" style="display: none;">
+                <i class="fas fa-info-circle"></i>
+                <span id="layerStatusText">Loading weather overlay...</span>
+            </div>
             <div id="map" class="weather-map"></div>
         </div>
     </div>
@@ -90,32 +94,44 @@
 
 {% block scripts %}
 <script>
+// Global variables
 let map;
 let baseLayer;
+let satelliteLayer;
 let currentOverlay;
 let weatherData;
+let cityMarker;
 
 document.addEventListener('DOMContentLoaded', function() {
     const city = '{{ city }}';
+    console.log('Loading weather data for:', city);
     loadWeatherData(city);
 });
 
 async function loadWeatherData(city) {
+    console.log('Fetching weather data...');
     try {
         const response = await fetch(`/api/weather/${city}`);
-        const data = await response.json();
-        
-        if (response.ok) {
-            weatherData = data;
-            displayWeatherData(data);
-            initializeMap(data);
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('weatherContent').style.display = 'block';
-        } else {
-            showError(data.error || 'Failed to load weather data');
+        console.log('API response status:', response.status);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
+
+        const data = await response.json();
+        console.log('Weather data received:', data);
+
+        weatherData = data;
+        displayWeatherData(data);
+        initializeMap(data);
+
+        // Hide loading and show content
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('weatherContent').style.display = 'block';
+
     } catch (error) {
-        showError('Network error: ' + error.message);
+        console.error('Error loading weather data:', error);
+        showError('Failed to load weather data: ' + error.message);
     }
 }
 
@@ -136,224 +152,435 @@ function displayWeatherData(data) {
 }
 
 function initializeMap(data) {
-    // Initialize Leaflet map
-    map = L.map('map').setView([data.coordinates.lat, data.coordinates.lon], 10);
+    console.log('Initializing map for coordinates:', data.coordinates);
 
-    // Add base tile layer (OpenStreetMap)
-    baseLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
-        maxZoom: 18
-    }).addTo(map);
+    try {
+        // Initialize Leaflet map
+        map = L.map('map').setView([data.coordinates.lat, data.coordinates.lon], 10);
 
-    // Add marker for the city
-    L.marker([data.coordinates.lat, data.coordinates.lon])
-        .addTo(map)
-        .bindPopup(`<b>${data.city}</b><br>${data.description}<br>${Math.round(data.temperature)}°C`)
-        .openPopup();
+        // Create base layers
+        baseLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 18
+        });
 
-    // Set up layer controls
-    setupLayerControls(data);
+        satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri',
+            maxZoom: 18
+        });
+
+        // Add default base layer
+        baseLayer.addTo(map);
+
+        // Add marker for the city
+        cityMarker = L.marker([data.coordinates.lat, data.coordinates.lon])
+            .addTo(map)
+            .bindPopup(`<b>${data.city}</b><br>${data.description}<br>${Math.round(data.temperature)}°C`)
+            .openPopup();
+
+        console.log('Map initialized successfully');
+
+        // Force map to resize properly (fixes display issues)
+        setTimeout(() => {
+            map.invalidateSize();
+        }, 100);
+
+        // Set up layer controls
+        setupLayerControls(data);
+
+        // Add window resize handler
+        window.addEventListener('resize', function() {
+            if (map) {
+                setTimeout(() => {
+                    map.invalidateSize();
+                }, 100);
+            }
+        });
+
+    } catch (error) {
+        console.error('Error initializing map:', error);
+        showError('Failed to initialize map: ' + error.message);
+    }
 }
 
 function setupLayerControls(data) {
+    console.log('Setting up layer controls');
     const mapButtons = document.querySelectorAll('.map-btn');
+
+    if (mapButtons.length === 0) {
+        console.error('No map buttons found!');
+        return;
+    }
 
     mapButtons.forEach(button => {
         button.addEventListener('click', function() {
+            console.log('Button clicked:', this.dataset.layer);
+
             // Remove active class from all buttons
             mapButtons.forEach(btn => {
                 btn.classList.remove('active');
-                btn.style.opacity = '1';
-                btn.innerHTML = btn.innerHTML.replace(' <i class="fas fa-spinner fa-spin"></i>', '');
+                btn.disabled = false;
             });
 
-            // Add active class and loading state to clicked button
+            // Add active class to clicked button
             this.classList.add('active');
-            const originalText = this.innerHTML;
-            this.innerHTML = originalText + ' <i class="fas fa-spinner fa-spin"></i>';
-            this.style.opacity = '0.8';
+            this.disabled = true;
 
             const layerType = this.dataset.layer;
 
             // Switch layer
-            switchMapLayer(layerType, data);
+            try {
+                switchMapLayer(layerType, data);
+            } catch (error) {
+                console.error('Error switching layer:', error);
+                showError('Failed to switch map layer');
+            }
 
-            // Remove loading state after a short delay
+            // Re-enable button
             setTimeout(() => {
-                this.innerHTML = originalText;
-                this.style.opacity = '1';
-            }, 1000);
+                this.disabled = false;
+            }, 500);
         });
     });
+
+    console.log('Layer controls set up for', mapButtons.length, 'buttons');
 }
 
 function switchMapLayer(layerType, data) {
     console.log('Switching to layer:', layerType);
 
-    // Remove current overlay if exists
-    if (currentOverlay) {
-        map.removeLayer(currentOverlay);
-        currentOverlay = null;
+    if (!map) {
+        console.error('Map not initialized!');
+        return;
     }
 
-    // Handle base layer changes vs overlay changes
-    switch(layerType) {
-        case 'base':
-            // Switch back to OpenStreetMap base layer
-            if (baseLayer && !map.hasLayer(baseLayer)) {
-                // Remove any other base layer first
-                map.eachLayer(function(layer) {
-                    if (layer !== baseLayer && layer._url && layer._url.includes('tile')) {
-                        map.removeLayer(layer);
-                    }
-                });
-                baseLayer.addTo(map);
-            }
-            console.log('Showing OpenStreetMap base layer');
-            break;
-
-        case 'satellite':
-            // Replace base layer with satellite imagery
-            if (baseLayer && map.hasLayer(baseLayer)) {
-                map.removeLayer(baseLayer);
-            }
-            console.log('Loading satellite imagery');
-            const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-                maxZoom: 18
-            }).addTo(map);
-            break;
-
-        case 'clouds':
-            // Ensure we have a base layer, then add clouds overlay
-            ensureBaseLayer();
-            console.log('Loading clouds overlay:', data.satellite_layers.clouds);
+    try {
+        // Remove current overlay if exists
+        if (currentOverlay) {
             try {
-                currentOverlay = L.tileLayer(data.satellite_layers.clouds, {
-                    attribution: 'Weather data © OpenWeatherMap',
-                    opacity: 0.7,
-                    maxZoom: 18
-                });
-                currentOverlay.addTo(map);
-
-                // Handle tile load errors
-                currentOverlay.on('tileerror', function(e) {
-                    console.warn('Clouds tile failed to load:', e.tile.src);
-                });
-
+                if (currentOverlay.eachLayer) {
+                    // It's a layer group, remove all layers
+                    currentOverlay.eachLayer(function(layer) {
+                        if (map.hasLayer(layer)) {
+                            map.removeLayer(layer);
+                        }
+                    });
+                } else if (map.hasLayer(currentOverlay)) {
+                    // It's a single layer
+                    map.removeLayer(currentOverlay);
+                }
+                currentOverlay = null;
+                console.log('Removed current overlay');
             } catch (error) {
-                console.error('Failed to load clouds layer:', error);
-                showLayerError('Clouds layer temporarily unavailable');
+                console.warn('Error removing overlay:', error);
+                currentOverlay = null;
             }
-            break;
+        }
 
-        case 'precipitation':
-            ensureBaseLayer();
-            console.log('Loading precipitation overlay:', data.satellite_layers.precipitation);
-            try {
-                currentOverlay = L.tileLayer(data.satellite_layers.precipitation, {
-                    attribution: 'Weather data © OpenWeatherMap',
-                    opacity: 0.7,
-                    maxZoom: 18
-                });
-                currentOverlay.addTo(map);
+        switch(layerType) {
+            case 'base':
+                // Switch to base map
+                if (satelliteLayer && map.hasLayer(satelliteLayer)) {
+                    map.removeLayer(satelliteLayer);
+                }
+                if (!map.hasLayer(baseLayer)) {
+                    baseLayer.addTo(map);
+                }
+                hideLayerStatus();
+                console.log('Switched to base map');
+                break;
 
-                currentOverlay.on('tileerror', function(e) {
-                    console.warn('Precipitation tile failed to load:', e.tile.src);
-                });
+            case 'satellite':
+                // Switch to satellite
+                if (baseLayer && map.hasLayer(baseLayer)) {
+                    map.removeLayer(baseLayer);
+                }
+                if (!map.hasLayer(satelliteLayer)) {
+                    satelliteLayer.addTo(map);
+                }
+                hideLayerStatus();
+                console.log('Switched to satellite view');
+                break;
 
-            } catch (error) {
-                console.error('Failed to load precipitation layer:', error);
-                showLayerError('Precipitation layer temporarily unavailable');
-            }
-            break;
+            case 'clouds':
+                // Ensure base layer, add clouds visualization
+                ensureBaseLayer();
 
-        case 'temperature':
-            ensureBaseLayer();
-            console.log('Loading temperature overlay:', data.satellite_layers.temperature);
-            try {
-                currentOverlay = L.tileLayer(data.satellite_layers.temperature, {
-                    attribution: 'Weather data © OpenWeatherMap',
-                    opacity: 0.7,
-                    maxZoom: 18
-                });
-                currentOverlay.addTo(map);
+                // Try OpenWeatherMap tiles first, then fallback to custom visualization
+                if (data.satellite_layers && data.satellite_layers.clouds) {
+                    console.log('Adding clouds overlay:', data.satellite_layers.clouds);
+                    currentOverlay = L.tileLayer(data.satellite_layers.clouds, {
+                        attribution: 'Weather data © OpenWeatherMap',
+                        opacity: 0.9,
+                        maxZoom: 18
+                    });
+                    currentOverlay.addTo(map);
 
-                currentOverlay.on('tileerror', function(e) {
-                    console.warn('Temperature tile failed to load:', e.tile.src);
-                });
+                    // Add custom cloud visualization based on current weather
+                    addCustomCloudVisualization(data);
 
-            } catch (error) {
-                console.error('Failed to load temperature layer:', error);
-                showLayerError('Temperature layer temporarily unavailable');
-            }
-            break;
+                    showLayerStatus(`Clouds: ${data.description} (${data.humidity}% humidity)`);
+                } else {
+                    // Fallback to custom visualization only
+                    addCustomCloudVisualization(data);
+                    showLayerStatus(`Cloud conditions: ${data.description} (${data.humidity}% humidity)`);
+                }
+                break;
 
-        default:
-            console.log('Unknown layer type:', layerType);
-            break;
+            case 'precipitation':
+                // Ensure base layer, add precipitation visualization
+                ensureBaseLayer();
+
+                // Add custom precipitation visualization
+                addCustomPrecipitationVisualization(data);
+
+                const precipitationStatus = getPrecipitationStatus(data);
+                showLayerStatus(`Precipitation: ${precipitationStatus}`);
+                break;
+
+            case 'temperature':
+                // Ensure base layer, add temperature visualization
+                ensureBaseLayer();
+
+                // Add custom temperature visualization
+                addCustomTemperatureVisualization(data);
+
+                const tempStatus = getTemperatureStatus(data);
+                showLayerStatus(`Temperature: ${tempStatus}`);
+                break;
+
+            default:
+                console.warn('Unknown layer type:', layerType);
+                break;
+        }
+
+    } catch (error) {
+        console.error('Error in switchMapLayer:', error);
+        showError('Failed to switch map layer');
     }
 }
 
 function ensureBaseLayer() {
     // Make sure we have a base layer for overlays
     if (!map.hasLayer(baseLayer)) {
-        // Remove any satellite layer first
-        map.eachLayer(function(layer) {
-            if (layer._url && (layer._url.includes('arcgisonline') || layer._url.includes('satellite'))) {
-                map.removeLayer(layer);
-            }
-        });
+        if (satelliteLayer && map.hasLayer(satelliteLayer)) {
+            map.removeLayer(satelliteLayer);
+        }
         baseLayer.addTo(map);
+        console.log('Ensured base layer is present');
     }
 }
 
-function showLayerError(message) {
-    // Create a temporary notification
-    const notification = document.createElement('div');
-    notification.style.cssText = `
-        position: fixed;
-        top: 80px;
-        right: 20px;
-        background: rgba(255, 107, 107, 0.95);
-        color: white;
-        padding: 12px 18px;
-        border-radius: 8px;
-        z-index: 10000;
-        font-size: 14px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255,255,255,0.2);
-        max-width: 300px;
-    `;
-    notification.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${message}`;
-    document.body.appendChild(notification);
+function showError(message) {
+    console.error('Showing error:', message);
 
-    // Fade in
-    notification.style.opacity = '0';
-    notification.style.transform = 'translateX(100%)';
-    setTimeout(() => {
-        notification.style.transition = 'all 0.3s ease';
-        notification.style.opacity = '1';
-        notification.style.transform = 'translateX(0)';
-    }, 10);
+    // Hide loading and show error
+    const loading = document.getElementById('loading');
+    const weatherContent = document.getElementById('weatherContent');
+    const errorMessage = document.getElementById('errorMessage');
+    const errorText = document.getElementById('errorText');
 
-    // Fade out and remove
-    setTimeout(() => {
-        notification.style.opacity = '0';
-        notification.style.transform = 'translateX(100%)';
-        setTimeout(() => {
-            if (document.body.contains(notification)) {
-                document.body.removeChild(notification);
-            }
-        }, 300);
-    }, 4000);
+    if (loading) loading.style.display = 'none';
+    if (weatherContent) weatherContent.style.display = 'none';
+    if (errorMessage) {
+        errorMessage.style.display = 'block';
+        if (errorText) errorText.textContent = message;
+    }
 }
 
-function showError(message) {
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('errorText').textContent = message;
-    document.getElementById('errorMessage').style.display = 'block';
+function showLayerStatus(message, isError = false) {
+    const layerStatus = document.getElementById('layerStatus');
+    const layerStatusText = document.getElementById('layerStatusText');
+
+    if (layerStatus && layerStatusText) {
+        layerStatusText.textContent = message;
+        layerStatus.style.display = 'flex';
+        layerStatus.style.background = isError ?
+            'rgba(255, 107, 107, 0.9)' :
+            'rgba(102, 126, 234, 0.9)';
+
+        // Auto-hide after 5 seconds if it's an error
+        if (isError) {
+            setTimeout(() => {
+                hideLayerStatus();
+            }, 5000);
+        }
+    }
+}
+
+function hideLayerStatus() {
+    const layerStatus = document.getElementById('layerStatus');
+    if (layerStatus) {
+        layerStatus.style.display = 'none';
+    }
+}
+
+// Custom weather visualization functions
+function addCustomCloudVisualization(data) {
+    try {
+        console.log('Creating cloud visualization for:', data.city);
+
+        // Create a circle overlay based on humidity and cloud conditions
+        const humidity = data.humidity;
+        const coords = [data.coordinates.lat, data.coordinates.lon];
+
+        // Determine cloud intensity based on humidity and description
+        let cloudIntensity = humidity / 100;
+        if (data.description.toLowerCase().includes('cloud')) {
+            cloudIntensity = Math.max(cloudIntensity, 0.6);
+        }
+
+        // Color based on cloud type
+        let cloudColor = '#87CEEB'; // Light blue for light clouds
+        if (data.description.toLowerCase().includes('overcast')) {
+            cloudColor = '#696969'; // Dark gray for overcast
+        } else if (data.description.toLowerCase().includes('partly')) {
+            cloudColor = '#B0C4DE'; // Light steel blue for partly cloudy
+        }
+
+        // Add circle overlay
+        const cloudCircle = L.circle(coords, {
+            color: cloudColor,
+            fillColor: cloudColor,
+            fillOpacity: Math.max(cloudIntensity * 0.5, 0.3), // Ensure minimum visibility
+            radius: 15000 // 15km radius
+        });
+
+        // Add to map and store reference
+        cloudCircle.addTo(map);
+        currentOverlay = cloudCircle; // Store single layer reference
+
+        console.log(`Added cloud visualization: ${Math.round(cloudIntensity * 100)}% intensity, color: ${cloudColor}`);
+
+    } catch (error) {
+        console.error('Error in addCustomCloudVisualization:', error);
+        throw error;
+    }
+}
+
+function addCustomPrecipitationVisualization(data) {
+    try {
+        console.log('Creating precipitation visualization for:', data.city);
+
+        const coords = [data.coordinates.lat, data.coordinates.lon];
+        const description = data.description.toLowerCase();
+
+        // Check for precipitation in weather description
+        if (description.includes('rain') || description.includes('drizzle') ||
+            description.includes('shower') || description.includes('snow')) {
+
+            let precipColor = '#4169E1'; // Blue for rain
+            let precipIntensity = 0.6;
+
+            if (description.includes('heavy')) {
+                precipIntensity = 0.8;
+                precipColor = '#0000CD'; // Dark blue for heavy rain
+            } else if (description.includes('light')) {
+                precipIntensity = 0.4;
+                precipColor = '#87CEFA'; // Light blue for light rain
+            } else if (description.includes('snow')) {
+                precipColor = '#F0F8FF'; // Alice blue for snow
+            }
+
+            // Add precipitation circle
+            const precipCircle = L.circle(coords, {
+                color: precipColor,
+                fillColor: precipColor,
+                fillOpacity: precipIntensity,
+                radius: 20000 // 20km radius
+            });
+
+            precipCircle.addTo(map);
+            currentOverlay = precipCircle;
+
+            console.log(`Added precipitation visualization: ${description}`);
+        } else {
+            // Add a light gray circle to show "no precipitation"
+            const noPrecipCircle = L.circle(coords, {
+                color: '#D3D3D3',
+                fillColor: '#D3D3D3',
+                fillOpacity: 0.2,
+                radius: 10000
+            });
+
+            noPrecipCircle.addTo(map);
+            currentOverlay = noPrecipCircle;
+
+            console.log('No precipitation detected - added clear weather indicator');
+        }
+
+    } catch (error) {
+        console.error('Error in addCustomPrecipitationVisualization:', error);
+        throw error;
+    }
+}
+
+function addCustomTemperatureVisualization(data) {
+    try {
+        console.log('Creating temperature visualization for:', data.city);
+
+        const coords = [data.coordinates.lat, data.coordinates.lon];
+        const temp = data.temperature;
+
+        // Color based on temperature
+        let tempColor = '#FFD700'; // Gold for moderate temps
+        let tempIntensity = 0.4;
+
+        if (temp > 35) {
+            tempColor = '#FF4500'; // Red-orange for hot
+            tempIntensity = 0.7;
+        } else if (temp > 25) {
+            tempColor = '#FFA500'; // Orange for warm
+            tempIntensity = 0.5;
+        } else if (temp < 10) {
+            tempColor = '#00BFFF'; // Deep sky blue for cold
+            tempIntensity = 0.6;
+        } else if (temp < 20) {
+            tempColor = '#87CEEB'; // Sky blue for cool
+            tempIntensity = 0.4;
+        }
+
+        // Add temperature circle
+        const tempCircle = L.circle(coords, {
+            color: tempColor,
+            fillColor: tempColor,
+            fillOpacity: tempIntensity,
+            radius: 25000 // 25km radius
+        });
+
+        tempCircle.addTo(map);
+        currentOverlay = tempCircle;
+
+        console.log(`Added temperature visualization: ${temp}°C, color: ${tempColor}`);
+
+    } catch (error) {
+        console.error('Error in addCustomTemperatureVisualization:', error);
+        throw error;
+    }
+}
+
+function getPrecipitationStatus(data) {
+    const description = data.description.toLowerCase();
+    if (description.includes('rain') || description.includes('drizzle') || description.includes('shower')) {
+        return `${data.description} detected`;
+    } else if (description.includes('snow')) {
+        return `${data.description} detected`;
+    } else {
+        return `No precipitation (${data.description})`;
+    }
+}
+
+function getTemperatureStatus(data) {
+    const temp = data.temperature;
+    let category = '';
+
+    if (temp > 35) category = 'Very Hot';
+    else if (temp > 25) category = 'Warm';
+    else if (temp > 20) category = 'Moderate';
+    else if (temp > 10) category = 'Cool';
+    else category = 'Cold';
+
+    return `${Math.round(temp)}°C (${category}) - Feels like ${Math.round(data.feels_like)}°C`;
 }
 </script>
 {% endblock %}
