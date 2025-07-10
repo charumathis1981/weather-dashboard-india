@@ -73,7 +73,9 @@ INDIAN_CITIES = {
 @app.route('/')
 def index():
     """Home page with city selection dropdown"""
-    return render_template('index.html', cities=list(INDIAN_CITIES.keys()))
+    # Sort cities alphabetically for better user experience
+    sorted_cities = sorted(INDIAN_CITIES.keys())
+    return render_template('index.html', cities=sorted_cities)
 
 @app.route('/weather/<city>')
 def weather(city):
